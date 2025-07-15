@@ -1,0 +1,16 @@
+enclave {
+    untrusted {
+        void ocall_do_nothing();
+    };
+
+    trusted {
+        public void ecall_benchmark_without_mfence([out] uint64_t* total_cycles, int iterations);
+        public void ecall_benchmark_with_mfence([out] uint64_t* total_cycles, int iterations);
+        public void ecall_benchmark_with_lfence([out] uint64_t* total_cycles, int iterations);
+        public void ecall_cpu_intensive([out] uint64_t* total_cycles, int iterations);
+        public void ecall_memory_workload([out] uint64_t* total_cycles, int iterations);
+        public void ecall_crypto_workload([out] uint64_t* total_cycles, int iterations);
+        public void ecall_syscall_overhead([out] uint64_t* total_cycles, int iterations);
+        public void ecall_ocall_benchmark([out] uint64_t* total_cycles, int iterations);
+    };
+};
