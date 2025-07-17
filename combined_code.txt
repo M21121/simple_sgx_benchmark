@@ -46,20 +46,25 @@ int main() {
     printf("SGX Performance Benchmark Suite\n");
     printf("Iterations: %d\n\n", NUM_ITERATIONS);
 
-    // Original MFENCE benchmark
-    printf("=== MFENCE Benchmark ===\n");
-    uint64_t cycles_without_mfence, cycles_with_mfence;
+    // Memory fence comparison benchmark
+    printf("=== Memory Fence Benchmark ===\n");
+    uint64_t cycles_without_fence, cycles_with_mfence, cycles_with_lfence;
 
-    ecall_benchmark_without_mfence(eid, &cycles_without_mfence, NUM_ITERATIONS);
+    ecall_benchmark_without_mfence(eid, &cycles_without_fence, NUM_ITERATIONS);
     ecall_benchmark_with_mfence(eid, &cycles_with_mfence, NUM_ITERATIONS);
+    ecall_benchmark_with_lfence(eid, &cycles_with_lfence, NUM_ITERATIONS);
 
-    double avg_without = (double)cycles_without_mfence / NUM_ITERATIONS;
-    double avg_with = (double)cycles_with_mfence / NUM_ITERATIONS;
-    double overhead = avg_with - avg_without;
+    double avg_without = (double)cycles_without_fence / NUM_ITERATIONS;
+    double avg_mfence = (double)cycles_with_mfence / NUM_ITERATIONS;
+    double avg_lfence = (double)cycles_with_lfence / NUM_ITERATIONS;
+    double mfence_overhead = avg_mfence - avg_without;
+    double lfence_overhead = avg_lfence - avg_without;
 
-    printf("Without MFENCE: %lu cycles (%.2f cycles/iter)\n", cycles_without_mfence, avg_without);
-    printf("With MFENCE:    %lu cycles (%.2f cycles/iter)\n", cycles_with_mfence, avg_with);
-    printf("Overhead:       %.2f cycles/iter (%.2f%%)\n\n", overhead, (overhead/avg_without)*100.0);
+    printf("Without fence: %lu cycles (%.2f cycles/iter)\n", cycles_without_fence, avg_without);
+    printf("With MFENCE:   %lu cycles (%.2f cycles/iter)\n", cycles_with_mfence, avg_mfence);
+    printf("With LFENCE:   %lu cycles (%.2f cycles/iter)\n", cycles_with_lfence, avg_lfence);
+    printf("MFENCE overhead: %.2f cycles/iter (%.2f%%)\n", mfence_overhead, (mfence_overhead/avg_without)*100.0);
+    printf("LFENCE overhead: %.2f cycles/iter (%.2f%%)\n\n", lfence_overhead, (lfence_overhead/avg_without)*100.0);
 
     // CPU-intensive workload
     printf("=== CPU Intensive Workload ===\n");
@@ -95,6 +100,7 @@ int main() {
     sgx_destroy_enclave(eid);
     return 0;
 }
+
 -------------------
 
 
@@ -249,24 +255,39 @@ void ecall_ocall_benchmark(uint64_t* total_cycles, int iterations) {
 
     *total_cycles = end - start;
 }
+
+void ecall_benchmark_with_lfence(uint64_t* total_cycles, int iterations) {
+    uint64_t start, end;
+    volatile int result = 0;
+
+    start = rdtsc();
+    for (int i = 0; i < iterations; i++) {
+        result += dummy_work(i);
+        __asm__ __volatile__("lfence" ::: "memory");
+    }
+    end = rdtsc();
+    *total_cycles = end - start;
+}
+
 -------------------
 
 
 ### File: ./Enclave/Enclave.edl ###
 
-// Enclave/Enclave.edl
 enclave {
     untrusted {
         void ocall_do_nothing();
     };
+
     trusted {
         public void ecall_benchmark_without_mfence([out] uint64_t* total_cycles, int iterations);
         public void ecall_benchmark_with_mfence([out] uint64_t* total_cycles, int iterations);
+        public void ecall_benchmark_with_lfence([out] uint64_t* total_cycles, int iterations);
         public void ecall_cpu_intensive([out] uint64_t* total_cycles, int iterations);
         public void ecall_memory_workload([out] uint64_t* total_cycles, int iterations);
         public void ecall_crypto_workload([out] uint64_t* total_cycles, int iterations);
         public void ecall_syscall_overhead([out] uint64_t* total_cycles, int iterations);
-        public void ecall_ocall_benchmark([out] uint64_t* total_cycles, int iterations);
+        public void ecall_ocall_benchmark([out] uint64_t* total_cycles, int iterations);
     };
 };
 
@@ -277,7 +298,7 @@ enclave {
 
 # Makefile
 SGX_SDK ?= /opt/intel/sgxsdk
-SGX_MODE ?= SIM
+SGX_MODE ?= HW
 SGX_ARCH ?= x64
 SGX_DEBUG ?= 1
 
