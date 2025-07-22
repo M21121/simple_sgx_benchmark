@@ -1,6 +1,10 @@
+// Enclave/Enclave.edl - Update the entire file
 enclave {
     untrusted {
         void ocall_do_nothing();
+        void ocall_create_file([in, string] const char* filename, [out] int* result);
+        void ocall_read_file([in, string] const char* filename, [out, size=buffer_size] char* buffer, size_t buffer_size, [out] int* bytes_read);
+        void ocall_delete_file([in, string] const char* filename);
     };
 
     trusted {
@@ -12,5 +16,11 @@ enclave {
         public void ecall_crypto_workload([out] uint64_t* total_cycles, int iterations);
         public void ecall_syscall_overhead([out] uint64_t* total_cycles, int iterations);
         public void ecall_ocall_benchmark([out] uint64_t* total_cycles, int iterations);
+        public void ecall_file_creation_without_fence([out] uint64_t* total_cycles, int iterations);
+        public void ecall_file_creation_with_fence([out] uint64_t* total_cycles, int iterations);
+        public void ecall_untrusted_file_read_without_fence([out] uint64_t* total_cycles, int iterations);
+        public void ecall_untrusted_file_read_with_fence([out] uint64_t* total_cycles, int iterations);
+        public void ecall_sealed_file_read_without_fence([out] uint64_t* total_cycles, int iterations);
+        public void ecall_sealed_file_read_with_fence([out] uint64_t* total_cycles, int iterations);
     };
 };

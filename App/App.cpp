@@ -4,6 +4,8 @@
 #include <unistd.h>
 #include <sgx_urts.h>
 #include "Enclave_u.h"
+#include <fcntl.h>
+#include <sys/stat.h>
 
 #define ENCLAVE_FILENAME "enclave.signed.so"
 #define NUM_ITERATIONS 1000000
@@ -11,6 +13,34 @@
 void ocall_do_nothing() {
     // Intentionally empty. We only want to measure the cost of calling it.
     return;
+}
+
+void ocall_create_file(const char* filename, int* result) {
+    int fd = open(filename, O_CREAT | O_WRONLY | O_TRUNC, 0644);
+    if (fd >= 0) {
+        write(fd, "test data", 9);
+        close(fd);
+        *result = 0;
+    } else {
+        *result = -1;
+    }
+}
+
+void ocall_read_file(const char* filename, char* buffer, size_t buffer_size, int* bytes_read) {
+    int fd = open(filename, O_RDONLY);
+    if (fd >= 0) {
+        *bytes_read = read(fd, buffer, buffer_size - 1);
+        if (*bytes_read > 0) {
+            buffer[*bytes_read] = '\0';
+        }
+        close(fd);
+    } else {
+        *bytes_read = -1;
+    }
+}
+
+void ocall_delete_file(const char* filename) {
+    unlink(filename);
 }
 
 int main() {
@@ -78,6 +108,53 @@ int main() {
     int ocall_iterations = 10000;
     ecall_ocall_benchmark(eid, &ocall_cycles, ocall_iterations);
     printf("OCALL transition: %lu cycles (%.2f cycles/iter)\n\n", ocall_cycles, (double)ocall_cycles / ocall_iterations);
+
+    // File Creation Benchmark
+    printf("=== File Creation Benchmark ===\n");
+    uint64_t file_create_without_fence, file_create_with_fence;
+    int file_iterations = 1000;
+
+    ecall_file_creation_without_fence(eid, &file_create_without_fence, file_iterations);
+    ecall_file_creation_with_fence(eid, &file_create_with_fence, file_iterations);
+
+    double avg_create_without = (double)file_create_without_fence / file_iterations;
+    double avg_create_with = (double)file_create_with_fence / file_iterations;
+    double create_overhead = avg_create_with - avg_create_without;
+
+    printf("File creation without fence: %lu cycles (%.2f cycles/iter)\n", file_create_without_fence, avg_create_without);
+    printf("File creation with fence:    %lu cycles (%.2f cycles/iter)\n", file_create_with_fence, avg_create_with);
+    printf("Fence overhead: %.2f cycles/iter (%.2f%%)\n\n", create_overhead, (create_overhead/avg_create_without)*100.0);
+
+    // Untrusted File Read Benchmark
+    printf("=== Untrusted File Read Benchmark ===\n");
+    uint64_t file_read_without_fence, file_read_with_fence;
+
+    ecall_untrusted_file_read_without_fence(eid, &file_read_without_fence, file_iterations);
+    ecall_untrusted_file_read_with_fence(eid, &file_read_with_fence, file_iterations);
+
+    double avg_read_without = (double)file_read_without_fence / file_iterations;
+    double avg_read_with = (double)file_read_with_fence / file_iterations;
+    double read_overhead = avg_read_with - avg_read_without;
+
+    printf("Untrusted read without fence: %lu cycles (%.2f cycles/iter)\n", file_read_without_fence, avg_read_without);
+    printf("Untrusted read with fence:    %lu cycles (%.2f cycles/iter)\n", file_read_with_fence, avg_read_with);
+    printf("Fence overhead: %.2f cycles/iter (%.2f%%)\n\n", read_overhead, (read_overhead/avg_read_without)*100.0);
+
+    // Sealed File Read Benchmark
+    printf("=== Sealed File Read Benchmark ===\n");
+    uint64_t sealed_read_without_fence, sealed_read_with_fence;
+    int sealed_iterations = 100;
+
+    ecall_sealed_file_read_without_fence(eid, &sealed_read_without_fence, sealed_iterations);
+    ecall_sealed_file_read_with_fence(eid, &sealed_read_with_fence, sealed_iterations);
+
+    double avg_sealed_without = (double)sealed_read_without_fence / sealed_iterations;
+    double avg_sealed_with = (double)sealed_read_with_fence / sealed_iterations;
+    double sealed_overhead = avg_sealed_with - avg_sealed_without;
+
+    printf("Sealed read without fence: %lu cycles (%.2f cycles/iter)\n", sealed_read_without_fence, avg_sealed_without);
+    printf("Sealed read with fence:    %lu cycles (%.2f cycles/iter)\n", sealed_read_with_fence, avg_sealed_with);
+    printf("Fence overhead: %.2f cycles/iter (%.2f%%)\n\n", sealed_overhead, (sealed_overhead/avg_sealed_without)*100.0);
 
     sgx_destroy_enclave(eid);
     return 0;
